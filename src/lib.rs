@@ -90,6 +90,7 @@ impl Grammar for FactorSumGrammar {
         }
     }
     fn getatom(&self, idx: usize, n: usize) -> RuleAtom<FactorSumGrammar> {
+        println!("\t{} {}", idx, n);
         match *self {
             FactorSumGrammar::Sum => {
                 match (idx, n) {
@@ -130,8 +131,8 @@ impl Grammar for FactorSumGrammar {
     }
 }
 
-#[derive(Copy, Clone, Hash)]
-struct Item<G: Grammar> {
+#[derive(Copy, Clone, Hash, Eq, PartialEq)]
+pub struct Item<G: Grammar> {
     rule: Rule<G>,
     dot: usize,
     start: usize,
@@ -156,11 +157,7 @@ impl<G: Grammar> Item<G> {
     }
 }
 
-pub fn parse(input: &[u8]) -> bool {
-    let mut statesets = vec![vec![
-        Item::new(Rule::new(FactorSumGrammar::Sum, 0), 0, 0),
-        Item::new(Rule::new(FactorSumGrammar::Sum, 1), 0, 0),
-    ]];
+pub fn parse<G: Grammar>(statesets: &mut Vec<Vec<Item<G>>>, input: &[u8]) -> bool {
     let mut i = 0;
     while i < statesets.len() {
         let mut j = 0;
@@ -171,13 +168,13 @@ pub fn parse(input: &[u8]) -> bool {
             if item.dot == rule.len() {
                 let mut k = 0;
                 while k < statesets[item.start].len() {
-                    let willpush = {
-                        let x = &statesets[k][item.start];
-                        let r = x.rule;
-                        x.dot < r.len() && r.getatom(x.dot) == item.rule.getatom(0)
-                    };
+                    let x = statesets[item.start][k];
+                    let willpush = x.dot < x.rule.len() && x.rule.getatom(x.dot) == item.rule.getatom(0);
                     if willpush {
-                        statesets[i].push(item.incr());
+                        let newitem = x.incr();
+                        if !statesets[i].contains(&newitem) {
+                            statesets[i].push(newitem.incr());
+                        }
                     }
                     k += 1;
                 }
@@ -186,7 +183,7 @@ pub fn parse(input: &[u8]) -> bool {
                     RuleAtom::Terminal(term) => {
                         if i < input.len() {
                             if term.test(input[i]) {
-                                if i == statesets.len() - 1 {
+                                if i + 1 == statesets.len() {
                                     statesets.push(vec![item.incr()]);
                                 } else {
                                     statesets[i + 1].push(item.incr());
@@ -197,7 +194,10 @@ pub fn parse(input: &[u8]) -> bool {
                     RuleAtom::Grammar(gram) => {
                         let mut stateset = &mut statesets[i];
                         for x in 0..gram.variants() {
-                            stateset.push(Item::new(Rule::new(gram, x), 0, i));
+                            let item = Item::new(Rule::new(gram, x), 0, i);
+                            if !stateset.contains(&item) {
+                                stateset.push(item);
+                            }
                         }
                     }
                 }
@@ -215,6 +215,10 @@ mod tests {
     #[test]
     fn it_works() {
         let test = b"1+(2*3-4)";
-        assert!(parse(test));
+        let mut statesets = vec![vec![
+            Item::new(Rule::new(FactorSumGrammar::Sum, 0), 0, 0),
+            Item::new(Rule::new(FactorSumGrammar::Sum, 1), 0, 0),
+        ]];
+        assert!(parse(&mut statesets, test));
     }
 }
